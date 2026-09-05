@@ -310,3 +310,47 @@ func outputPathOrFail(t *testing.T, in params.TranscodeInput, source string) str
 	}
 	return out
 }
+
+// TestTranscodeSourceResolution covers the evidence-phase threading contract
+// (B12): the source artifact rides the op input first (source_artifact — the
+// bed-runner evidence phase threads the entry's primary artifact there), with
+// the check env as the fallback for a direct/plan-step dispatch. And when the
+// evidence phase's injected artifact (the shared validators' contract) IS the
+// source, it is not an authored output path — the output must derive from the
+// source instead of being rejected as a non-mp4 artifact.
+func TestTranscodeSourceResolution(t *testing.T) {
+	hasFFmpeg(t)
+	dir := t.TempDir()
+	src := twoFrameMJPEG(t, dir)
+	envSrc := filepath.Join(dir, "env.mjpeg")
+	if err := os.WriteFile(envSrc, []byte("env source — must NOT be used when the input threads one"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Input-first: source_artifact in the op input wins over the env (the
+	// evidence phase's threading). The output derives from the INPUT source.
+	status, msg := invokeTranscode(t, transcodeRequest(t, spec.Op{PluginInput: map[string]any{
+		"source_artifact": src,
+	}}, transcodeEnv{SourceArtifact: envSrc}))
+	if status != "pass" {
+		t.Fatalf("input-first: want pass (input source transcodes), got %s: %s", status, msg)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "source.mp4")); err != nil {
+		t.Errorf("input-first: output derived from the input source (source.mp4): %v", err)
+	}
+	// Env fallback: no input source_artifact → the env's source is used.
+	status, msg = invokeTranscode(t, transcodeRequest(t, spec.Op{PluginInput: map[string]any{}}, transcodeEnv{SourceArtifact: src}))
+	if status != "pass" {
+		t.Fatalf("env fallback: want pass (env source transcodes), got %s: %s", status, msg)
+	}
+	// Artifact==source clearing: the evidence phase injects artifact = the source
+	// (the shared validators' contract). It must NOT be treated as an authored
+	// output path — the output derives from the source (source.mp4), so the
+	// transcode passes instead of tripping the non-mp4 artifact gate.
+	status, msg = invokeTranscode(t, transcodeRequest(t, spec.Op{PluginInput: map[string]any{
+		"source_artifact": src,
+		"artifact":        src,
+	}}, transcodeEnv{}))
+	if status != "pass" {
+		t.Fatalf("artifact==source: want pass (artifact gate skipped, output derives from source), got %s: %s", status, msg)
+	}
+}
