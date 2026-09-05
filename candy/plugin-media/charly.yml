@@ -1,0 +1,36 @@
+version: 2026.232.0520
+plugin-media:
+    candy:
+        version: 2026.248.1230
+        description: |-
+            OUT-OF-TREE charly plugin serving the `transcode` pipeline check verb — the
+            single-purpose HOST-SIDE video transcode (source MJPEG → H.264 MP4 via the
+            host's ffmpeg), a standalone Go module (go.mod + cmd/serve) served out-of-process
+            over go-plugin gRPC via the charly plugin SDK (github.com/opencharly/sdk). It is
+            the ONLY new org repo of the nested-capture cutover A: the capture evidence
+            pipeline's `transcode: {to: mp4}` word dispatches through the provider registry
+            exactly like a built-in verb (ResolveVerb → grpcProvider → invokeVerbProvider
+            hands it the full #Op), executing in the evidence phase BEFORE venue teardown.
+            Host-side by construction: the MJPEG artifact a capture session flushes (e.g.
+            `spice: record`) is already host-side, so this provider runs `ffmpeg -y -loglevel
+            error -i <mjpeg> -c:v libx264 -pix_fmt yuv420p <out>` locally, writes the MP4 to
+            the input's `artifact` (or the derived `<source>.mp4` path), and SELF-EVALUATES
+            the artifact validators + the shared exit/stdout/stderr matchers itself (the
+            out-of-process path does not run a host-side matcher pipeline). Per the RDD-3
+            binding (exact hashes of transcoded frames are vacuous — x264 QP noise),
+            `artifact_not_uniform` runs on the SOURCE MJPEG frames (pre-encode): the MJPEG
+            stream is split into its constituent JPEGs, decoded, and compared — identical
+            frames FAIL the assertion honestly, differing frames PASS. DEPENDENCY: requires
+            host ffmpeg (with libx264 + yuv420p support).
+        plugin:
+            source: github.com/opencharly/plugin-media/candy/plugin-media
+            providers:
+                - verb:transcode
+            primary:
+                transcode: to
+        plan:
+            - check: the transcode verb dispatches through the provider registry and the ADE plan is deterministic — the plain command form with the literal true target (the plugin envelope is internal only, and a live transcode needs a session artifact, exercised by the cutover-A R10 beds)
+              id: transcode-deterministic-ade-check
+              command: "true"
+              context:
+                - runtime
