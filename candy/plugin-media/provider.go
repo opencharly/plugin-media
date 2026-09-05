@@ -61,8 +61,23 @@ func (p provider) Invoke(ctx context.Context, req *pb.InvokeRequest) (*pb.Invoke
 	if len(req.GetEnvJson()) > 0 {
 		_ = json.Unmarshal(req.GetEnvJson(), &env)
 	}
+	// The source artifact rides the op input first (the bed-runner evidence phase
+	// threads the entry's primary artifact as source_artifact — the env is fixed at
+	// runner construction and cannot carry a per-entry path), with the check env as
+	// the fallback for a direct/plan-step dispatch.
+	source := env.SourceArtifact
+	if s, ok := op.PluginInput["source_artifact"].(string); ok && s != "" {
+		source = s
+	}
+	// The evidence phase threads the entry's primary artifact under BOTH artifact
+	// (the shared validators' contract) and source_artifact (this verb's source).
+	// When the injected artifact IS the source, it is not an authored output path
+	// — clear it so the output derives from the source (the common authoring).
+	if in.Artifact != "" && in.Artifact == source {
+		in.Artifact = ""
+	}
 
-	outPath, _, runErr := runTranscode(ctx, &op, &in, env.SourceArtifact)
+	outPath, _, runErr := runTranscode(ctx, &op, &in, source)
 	out := outPath
 
 	// Self-evaluation via the SHARED verdict pipeline (R3). Two transcode-specific

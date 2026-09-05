@@ -24,6 +24,11 @@
 // (gengotypes + the load-gate compile) AND splices onto the base (base ++ plugin
 // is a def-name collision check, not a base-reference resolver).
 #TranscodeInput: {
+	// source_artifact — the HOST path of the source to transcode (the MJPEG the
+	// capture session flushed). The bed-runner evidence phase threads the entry's
+	// primary artifact here; a direct/plan-step dispatch may set it explicitly.
+	// Empty → the provider falls back to the check env's source_artifact.
+	source_artifact?: string @go(SourceArtifact)
 	// to — the CONTAINER FORMAT to transcode the source to. Single-purpose verb:
 	// only "mp4" is supported (the default; an empty/omitted value means mp4). The
 	// transcode is H.264 + yuv420p in an MP4 container, so the artifact plays
