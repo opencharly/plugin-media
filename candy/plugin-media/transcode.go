@@ -29,7 +29,7 @@ const maxTranscodeStderr = 2048
 // runTranscode resolves the source + output paths, validates the single-purpose
 // `to` format, and runs the host ffmpeg transcode:
 //
-//	ffmpeg -y -loglevel error -i <mjpeg> -c:v libx264 -pix_fmt yuv420p <out>
+//	ffmpeg -y -loglevel error -i <mjpeg> -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -pix_fmt yuv420p <out>
 //
 // It returns the resolved output path (the artifact the shared validators + the
 // caller stat), the ffmpeg run output (for the shared stdout/stderr/exit
@@ -56,7 +56,13 @@ func runTranscode(ctx context.Context, op *spec.Op, in *params.TranscodeInput, s
 	if err != nil {
 		return "", "", errors.New("host ffmpeg not found — the transcode verb requires host ffmpeg with libx264 + yuv420p support (dependency noted in the candy description)")
 	}
-	argv := []string{"-y", "-loglevel", "error", "-i", source, "-c:v", "libx264", "-pix_fmt", "yuv420p", out}
+	// Even-dimension scale (RCA 2026-09-07, Cutover E-3 R10 bed): the capture verbs
+	// are free to hand the recorder whatever the browser/viewer produces — the E-3
+	// chrome-headless screencast measured 780x437 (odd height) — and libx264
+	// rejects non-even frame dimensions. Scale to the nearest even size (trunc,
+	// never ceil, so a 1px dimension stays >= 0; aspect ratio preserved via the
+	// same factor on both axes).
+	argv := []string{"-y", "-loglevel", "error", "-i", source, "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", out}
 	cmd := exec.CommandContext(ctx, ffmpeg, argv...)
 	bout, rerr := cmd.CombinedOutput()
 	if rerr != nil {
