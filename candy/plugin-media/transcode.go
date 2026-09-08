@@ -29,11 +29,18 @@ const maxTranscodeStderr = 2048
 // runTranscode resolves the source + output paths, validates the single-purpose
 // `to` format, and runs the host ffmpeg transcode:
 //
-//	ffmpeg -y -loglevel error -i <src> -c:v libx264 -pix_fmt yuv420p -video_track_timescale 1000 <out>
+//	ffmpeg -y -loglevel error -i <src> -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -pix_fmt yuv420p -video_track_timescale 1000 <out>
 //
-// The -video_track_timescale 1000 pin keeps the mp4 muxer's duration computation in
-// range for an Appium screenrecord source (90000-Hz track, non-monotonic dts — the
-// invalid-duration mux failure class, E-5 run 2026.251.1258).
+// Two robustness pins, one canonical invocation:
+//   - the even-dimension scale (RCA 2026-09-07, Cutover E-3 R10 bed): capture verbs
+//     hand the recorder whatever the browser/viewer produces — the E-3
+//     chrome-headless screencast measured 780x437 (odd height) — and libx264
+//     rejects non-even frame dimensions. Scale to the nearest even size (trunc,
+//     never ceil, so a 1px dimension stays >= 0; aspect ratio preserved via the
+//     same factor on both axes).
+//   - the -video_track_timescale 1000 pin keeps the mp4 muxer's duration computation
+//     in range for an Appium screenrecord source (90000-Hz track, non-monotonic dts —
+//     the invalid-duration mux failure class, E-5 run 2026.251.1258).
 //
 // It returns the resolved output path (the artifact the shared validators + the
 // caller stat), the ffmpeg run output (for the shared stdout/stderr/exit
@@ -60,6 +67,8 @@ func runTranscode(ctx context.Context, op *spec.Op, in *params.TranscodeInput, s
 	if err != nil {
 		return "", "", errors.New("host ffmpeg not found — the transcode verb requires host ffmpeg with libx264 + yuv420p support (dependency noted in the candy description)")
 	}
+	// the single canonical argv builder carries BOTH robustness pins (E-3 even-dim
+	// scale + E-5 track-timescale) — no inline argv duplication.
 	cmd := exec.CommandContext(ctx, ffmpeg, transcodeArgv(source, out)...)
 	bout, rerr := cmd.CombinedOutput()
 	if rerr != nil {
@@ -84,9 +93,11 @@ func runTranscode(ctx context.Context, op *spec.Op, in *params.TranscodeInput, s
 // 2026.251.1258's evidence phase (every phase green 302/0, the pulled mp4 valid per
 // ffprobe, yet the transcode word died exactly here). Pinning the track timescale
 // keeps the muxer's duration computation in range for ANY source; the MJPEG path is
-// unaffected (the flag only fixes the output track timescale).
+// unaffected (the flag only fixes the output track timescale). The argv is ALSO the
+// single home of the E-3 even-dimension scale filter (odd-source libx264 rejection,
+// R3 — one canonical invocation).
 func transcodeArgv(source, out string) []string {
-	return []string{"-y", "-loglevel", "error", "-i", source, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-video_track_timescale", "1000", out}
+	return []string{"-y", "-loglevel", "error", "-i", source, "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-video_track_timescale", "1000", out}
 }
 
 // validateFormat enforces the single-purpose `to` field: "" or "mp4" only. An

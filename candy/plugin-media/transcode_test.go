@@ -61,7 +61,7 @@ func hasFFmpeg(t *testing.T) {
 func ffprobeKeys(t *testing.T, path string) map[string]string {
 	t.Helper()
 	out, err := exec.Command("ffprobe", "-v", "error",
-		"-show_entries", "format=format_name:stream=codec_name",
+		"-show_entries", "format=format_name:stream=codec_name,width,height",
 		"-of", "default=nw=1", path).CombinedOutput()
 	if err != nil {
 		t.Fatalf("ffprobe %q: %v (%s)", path, err, strings.TrimSpace(string(out)))
@@ -377,5 +377,37 @@ func TestTranscodeSourceResolution(t *testing.T) {
 	}}, transcodeEnv{}))
 	if status != "pass" {
 		t.Fatalf("artifact==source: want pass (artifact gate skipped, output derives from source), got %s: %s", status, msg)
+	}
+}
+
+// TestTranscodeOddHeightSource — the Cutover E-3 R10 bed regression (RCA
+// 2026-09-07): the E-3 chrome-headless CDP screencast session produced 780x437
+// frames (ODD height — libx264 rejects "height not divisible by 2"), and the
+// transcode verb hard-failed the bed's evidence phase. The verb must scale the
+// source to the nearest even dimensions so ANY capture verb's session frames
+// transcode into a valid MP4.
+func TestTranscodeOddHeightSource(t *testing.T) {
+	hasFFmpeg(t)
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mjpeg")
+	if err := os.WriteFile(source, jpegFrame(t, 780, 437, gradient()), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	out := filepath.Join(dir, "odd.mp4")
+	status, msg := invokeTranscode(t, transcodeRequest(t, spec.Op{
+		PluginInput: map[string]any{
+			"artifact":           out,
+			"artifact_min_bytes": 100,
+		},
+	}, transcodeEnv{SourceArtifact: source}))
+	if status != "pass" {
+		t.Fatalf("transcode verdict = %s: %s", status, msg)
+	}
+	kv := ffprobeKeys(t, out)
+	if kv["codec_name"] != "h264" {
+		t.Errorf("codec = %q, want h264", kv["codec_name"])
+	}
+	if kv["width"] != "780" || kv["height"] != "436" {
+		t.Errorf("output dims = %sx%s, want 780x436 (scaled to nearest even)", kv["width"], kv["height"])
 	}
 }
