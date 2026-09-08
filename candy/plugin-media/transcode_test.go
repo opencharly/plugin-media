@@ -122,6 +122,31 @@ func TestTranscodeToMp4(t *testing.T) {
 	}
 }
 
+// TestTranscodeArgvPinsSaneTrackTimescale is the screenrecord-duration robustness
+// contract (E-5 run 2026.251.1258 evidence phase): an Appium stopRecordingScreen
+// MP4 declares a 90000-Hz video track (r_frame_rate=90000/1, time_base 1/90000) with
+// non-monotonic dts; un-pinned, the mp4 muxer derives a garbage output duration and
+// dies with "Application provided duration: 3469067760 in stream 0 is invalid"
+// (mux error -22 — reproduced live against the 1258 pulled mp4: old argv exit 234,
+// the pinned argv exit 0). The transcoder must ALWAYS pin a sane output track
+// timescale so the duration computation stays in range for every source. The real
+// vector is proven by the E-5 bed's evidence phase; this test pins the argv contract.
+func TestTranscodeArgvPinsSaneTrackTimescale(t *testing.T) {
+	argv := transcodeArgv("/src/appium-1.mp4", "/out/appium-1.mp4")
+	pinned := false
+	for i, a := range argv {
+		if a == "-video_track_timescale" && i+1 < len(argv) && argv[i+1] == "1000" {
+			pinned = true
+		}
+	}
+	if !pinned {
+		t.Fatalf("transcode argv %v must pin -video_track_timescale 1000 (the screenrecord-duration overflow guard)", argv)
+	}
+	if argv[len(argv)-1] != "/out/appium-1.mp4" {
+		t.Fatalf("transcode argv %v must end with the output path", argv)
+	}
+}
+
 func TestTranscodeDefaultOutputPath(t *testing.T) {
 	hasFFmpeg(t)
 	dir := t.TempDir()
