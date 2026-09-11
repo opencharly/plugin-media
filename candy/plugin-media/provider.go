@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/opencharly/plugin-media/candy/plugin-media/params"
 	"github.com/opencharly/sdk"
@@ -17,9 +18,10 @@ import (
 // FULL #Op marshaled as params_json and a CheckEnv snapshot as env. Because the
 // out-of-process path does NOT run a host-side matcher pipeline, this Invoke
 // OWNS the whole verdict: run the host ffmpeg transcode, then evaluate the
-// exit_status/stdout/stderr matchers + the artifact validators itself (via the
-// shared sdk implementation — R3) and return the wire {status,message} the host
-// decodes.
+// exit_status/stdout/stderr matchers via the shared sdk verdict pipeline
+// (sdk.VerbVerdict) and the artifact validators via the shared sdk.LandArtifact
+// host-leg tail (R3 — the SAME write-then-validate call every artifact-producing
+// plugin uses) and return the wire {status,message} the host decodes.
 
 // transcodeEnv is the plugin-side decode of the CheckEnv snapshot the host ships
 // as Operation.Env for a `transcode:` pipeline word. The pipeline executes in the
@@ -40,9 +42,11 @@ type provider struct{ pb.UnimplementedProviderServer }
 // transcode (ffmpeg -y -loglevel error -i <mjpeg> -c:v libx264 -pix_fmt yuv420p
 // <out>), and self-evaluates:
 //
-//   - the shared exit_status/stdout/stderr matchers against the ffmpeg run, and
-//     artifact_min_bytes against the produced MP4 (sdk.VerbVerdict, the shared
-//     pipeline — with the real output path injected into the plugin-input copy);
+//   - the shared exit_status/stdout/stderr matchers against the ffmpeg run
+//     (sdk.VerbVerdict — matchers only) and the artifact validators against the
+//     produced MP4 via sdk.LandArtifact, the shared write-then-validate tail
+//     (host leg: nil executor + blank venue path → validate on the existing
+//     host path; the real output path is injected into the plugin-input copy);
 //   - artifact_not_uniform on the SOURCE MJPEG frames (pre-encode; the RDD-3
 //     binding — never on the transcoded output, where exact frame hashes are
 //     vacuous x264 QP noise). The shared validator would image-decode the MP4
@@ -95,12 +99,23 @@ func (p provider) Invoke(ctx context.Context, req *pb.InvokeRequest) (*pb.Invoke
 		delete(pi, "artifact_not_uniform")
 	}
 	val.PluginInput = pi
-	reply, verr := sdk.VerbVerdict("transcode", "transcode", "", runErr, &val, true)
+	// Matchers only — the artifact validators moved OUT of the verdict pipeline
+	// into the shared LandArtifact tail below (G-8/G-9).
+	reply, verr := sdk.VerbVerdict("transcode", "transcode", "", runErr, &val, false)
 	if verr != nil {
 		return nil, verr
 	}
 	if status, _ := replyStatus(reply); status != "pass" {
 		return reply, nil
+	}
+
+	// The write-then-validate tail (G-8/G-9): the SAME sdk.LandArtifact call every
+	// artifact-producing plugin uses. Host leg (nil executor, blank venue path) —
+	// the MP4 was written host-side by ffmpeg, so nothing is pulled or written;
+	// the shared artifact validators (artifact_min_bytes etc.) ALWAYS run on the
+	// existing host path via sdk.RunArtifactValidators.
+	if err := sdk.LandArtifact(ctx, nil, "", out, &val); err != nil {
+		return sdk.ResultJSON("fail", fmt.Sprintf("transcode: transcode: %v", err))
 	}
 
 	// artifact_not_uniform: the SOURCE-frame motion assertion (RDD-3). Runs on the
