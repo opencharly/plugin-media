@@ -1,5 +1,7 @@
+version: 2026.232.0520
 plugin-media:
     candy:
+        version: 2026.248.1230
         description: |-
             OUT-OF-TREE charly plugin serving the `transcode` pipeline check verb — the
             single-purpose HOST-SIDE video transcode (source MJPEG → H.264 MP4 via the
