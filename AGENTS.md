@@ -18,6 +18,9 @@ Canonical files:
 
 ## Load these skills first (R0)
 
+- `/charly-check:transcode` — the `transcode:` capture-evidence pipeline verb
+  reference (the plugin's user-facing surface). Load before changing the verb's
+  input schema or its ffmpeg behavior.
 - `/charly-internals:plugin` — the plugin authoring reference: the `plugin:`
   block, the unified Provider model, the per-plugin CUE-schema contract,
   placement. Load before touching the provider or schema.
