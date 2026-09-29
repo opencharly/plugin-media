@@ -1,16 +1,34 @@
 # plugin-media
 
-The `transcode` pipeline verb plugin candy of the [opencharly/charly](https://github.com/opencharly/charly)
-candy library, as a standalone repo (the nested-capture cutover A, the only NEW org repo).
-The Go module lives at `candy/plugin-media/` with module path
-`github.com/opencharly/plugin-media/candy/plugin-media`; the charly resolver fetches this repo at the pinned tag and
-the compiled-in wiring imports the module at that path.
+Host-side video transcoding for OpenCharly — the `transcode:` pipeline check
+verb, converting a captured MJPEG stream into an H.264 MP4 with the host's
+`ffmpeg`.
 
-## The verb
+The plugin is an out-of-tree Go module: charly fetches this repo at the pinned
+tag, go-builds the provider on the host, and serves it **out-of-process** over
+go-plugin gRPC via the plugin SDK. The verb dispatches through the provider
+registry exactly like a built-in, executing in the evidence phase before venue
+teardown.
 
-`transcode:` is a SINGLE-PURPOSE host-side video transcode verb: it converts a source MJPEG
-video (the artifact a capture session flushed host-side, e.g. `spice: record`) into an
-H.264 MP4 container via the host's `ffmpeg`:
+## What it provides
+
+| Capability | Surface |
+|---|---|
+| `verb:transcode` | the `transcode:` pipeline verb — source MJPEG → H.264 MP4 |
+
+The verb is **host-side by construction**: the MJPEG artifact a capture session
+flushes (e.g. `spice: record`) is already host-side, so the provider runs
+`ffmpeg -y -loglevel error -i <mjpeg> -c:v libx264 -pix_fmt yuv420p <out>`
+locally and writes the MP4 to the input's `artifact` (or the derived
+`<source>.mp4` path). It self-evaluates the artifact validators and the shared
+`exit_status`/`stdout`/`stderr` matchers.
+
+**Requires host `ffmpeg`** (with libx264 + yuv420p support).
+
+## How to use it
+
+Compose the plugin candy in a box or check bed's `candy:` list, then use it in an
+instrument's `pipeline:`:
 
 ```yaml
 instrument:
@@ -22,27 +40,29 @@ instrument:
           - transcode: mp4                # scalar-sugar equal (primary field: to)
 ```
 
-- **`to`** — the container format; only `mp4` is supported (single-purpose verb, default).
-- **`artifact`** — the host path the transcoded MP4 is written to; empty → derived from the
-  source path (`<source>.mp4`).
-- **`artifact_min_bytes`** — post-transcode artifact-size assertion.
-- **`artifact_not_uniform`** — SOURCE-frame motion assertion: evaluated on the SOURCE MJPEG
-  frames (pre-encode), never on the transcoded output — exact hashes of x264-encoded frames
-  are vacuous (QP noise, the RDD-3 binding of the nested-capture plan).
-- The shared assertion matchers (`exit_status`/`stdout`/`stderr`) and `timeout` stay on
-  core #Op and are self-evaluated by the provider against the ffmpeg run.
+| Field | Meaning |
+|---|---|
+| `to` | container format; only `mp4` is supported (default) |
+| `artifact` | host path the MP4 is written to; empty → derived from the source (`<source>.mp4`) |
+| `artifact_min_bytes` | post-transcode artifact-size assertion |
+| `artifact_not_uniform` | SOURCE-frame motion assertion, evaluated on the SOURCE MJPEG frames (pre-encode) — exact hashes of x264-encoded frames are vacuous (QP noise) |
 
-**Source contract:** the provider resolves the source MJPEG from the check-env snapshot key
-`source_artifact` (the host path of the session's flushed artifact), threaded by the
-bed-runner evidence phase (Cutover A task 4, `plugin-check`). **Requires host `ffmpeg`**
-(the dependency note in the candy description).
+The shared matchers (`exit_status`/`stdout`/`stderr`) and `timeout` stay on core
+`#Op` and are self-evaluated by the provider against the ffmpeg run.
 
-## Developer
+## Layout
 
-```
-cd candy/plugin-media
-go build ./... && go vet ./... && go test ./...
-```
+- `candy/plugin-media/` — the plugin module: `plugin.go` (provider + meta),
+  `transcode.go`, `mjpeg.go`, `schema/transcode.cue` (the self-contained
+  `#TranscodeInput`), `params/cue_types_gen.go`, and `cmd/serve/main.go`.
+- `charly.yml` — the root project manifest (`discover: candy`).
+- `.github/workflows/tag-on-merge.yml` — CalVer tag + `CHANGELOG/` on merge.
 
-First tag convention: `candy/plugin-media/v0.<CalVer>` (subdirectory module tag). The candy
-`version:` stamp + `NewMeta` calver equal the tag's CalVer.
+## Related
+
+- Owning skill: `/charly-check:check` — the check verb catalog and plan-step
+  surface the `transcode:` verb is authored through (the candy carries no
+  `skill:` entity of its own; the gap is tracked in
+  [opencharly/opencharly#291](https://github.com/opencharly/opencharly/issues/291)).
+- `/charly-internals:plugin` — the plugin/provider model.
+- [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI.
