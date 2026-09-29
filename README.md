@@ -52,7 +52,8 @@ The shared matchers (`exit_status`/`stdout`/`stderr`) and `timeout` stay on core
 
 ## Layout
 
-- `candy/plugin-media/` — the plugin module: `plugin.go` (provider + meta),
+- `candy/plugin-media/` — the plugin module: `plugin.go` (provider + meta
+  registration), `provider.go` (the `transcode` verb provider),
   `transcode.go`, `mjpeg.go`, `schema/transcode.cue` (the self-contained
   `#TranscodeInput`), `params/cue_types_gen.go`, and `cmd/serve/main.go`.
 - `charly.yml` — the root project manifest (`discover: candy`).
