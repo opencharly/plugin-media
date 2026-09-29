@@ -61,9 +61,10 @@ The shared matchers (`exit_status`/`stdout`/`stderr`) and `timeout` stay on core
 
 ## Related
 
-- Owning skill: `/charly-check:check` — the check verb catalog and plan-step
-  surface the `transcode:` verb is authored through (the candy carries no
-  `skill:` entity of its own; the gap is tracked in
-  [opencharly/opencharly#291](https://github.com/opencharly/opencharly/issues/291)).
+- Owning skill: `/charly-check:transcode` — the `transcode:` capture-evidence
+  pipeline verb reference (the plugin's user-facing surface; the candy carries
+  its own `transcode-skill:` entity).
+- `/charly-check:check` — the check verb catalog and plan-step surface the
+  `transcode:` verb is authored through.
 - `/charly-internals:plugin` — the plugin/provider model.
 - [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI.
