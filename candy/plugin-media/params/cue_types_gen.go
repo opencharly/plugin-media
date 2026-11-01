@@ -32,23 +32,23 @@ type TranscodeInput struct {
 	// capture session flushed). The bed-runner evidence phase threads the entry's
 	// primary artifact here; a direct/plan-step dispatch may set it explicitly.
 	// Empty → the provider falls back to the check env's source_artifact.
-	SourceArtifact string `json:"source_artifact,omitempty"`
+	SourceArtifact string `yaml:"source_artifact,omitempty" json:"source_artifact,omitempty"`
 
 	// to — the CONTAINER FORMAT to transcode the source to. Single-purpose verb:
 	// only "mp4" is supported (the default; an empty/omitted value means mp4). The
 	// transcode is H.264 + yuv420p in an MP4 container, so the artifact plays
 	// everywhere (the ffmpeg argv: -c:v libx264 -pix_fmt yuv420p).
-	To string `json:"to,omitempty"`
+	To string `yaml:"to,omitempty" json:"to,omitempty"`
 
 	// artifact — the HOST path the transcoded file is written to. Empty (the
 	// common case) → derived from the source path by swapping its extension to
 	// ".mp4" (the source MJPEG the capture session flushed is already host-side).
-	Artifact string `json:"artifact,omitempty"`
+	Artifact string `yaml:"artifact,omitempty" json:"artifact,omitempty"`
 
 	// artifact_min_bytes — the post-transcode artifact-reality assertion: the
 	// output MP4 must be at least this many bytes (sdk.RunArtifactValidators,
 	// shared implementation).
-	ArtifactMinBytes int `json:"artifact_min_bytes,omitempty"`
+	ArtifactMinBytes int `yaml:"artifact_min_bytes,omitempty" json:"artifact_min_bytes,omitempty"`
 
 	// artifact_not_uniform — the SOURCE-frame motion assertion (the RDD-3 binding
 	// of the nested-capture plan): evaluated on the SOURCE MJPEG frames (the
@@ -57,5 +57,5 @@ type TranscodeInput struct {
 	// source MJPEG stream into its constituent JPEGs, decodes a stream-wide
 	// sample, and requires at least two distinct frame signatures: identical
 	// frames FAIL honestly (a real capture shows motion), differing frames PASS.
-	ArtifactNotUniform bool `json:"artifact_not_uniform,omitempty"`
+	ArtifactNotUniform bool `yaml:"artifact_not_uniform,omitempty" json:"artifact_not_uniform,omitempty"`
 }
